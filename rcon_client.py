@@ -71,7 +71,13 @@ class WardogsRconClient:
         if isinstance(data, list):
             players = data
         elif isinstance(data, dict):
-            players = data.get("players") or data.get("data") or data.get("items")
+            # Do not use ``a or b or c`` here: an empty player list ([]) is a
+            # valid API response for an empty server, but [] is falsy in Python.
+            players = None
+            for key in ("players", "data", "items"):
+                if key in data:
+                    players = data[key]
+                    break
         else:
             players = None
 
