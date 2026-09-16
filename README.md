@@ -4,6 +4,7 @@ Python service for polling the Wardogs RCON `GET /v1/players` endpoint, detectin
 
 
 ## Yes, its made with AI, if you want to cry about it, dont use it!
+- build and tested on -> `v1 • ++Wardogs+Live-CL-501228`
 
 ## Included features
 
