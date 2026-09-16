@@ -1,0 +1,190 @@
+# Wardogs NameGuard configuration
+# Copy to config.yaml and adjust. UTF-8 encoding is required.
+
+rcon:
+  # Base URL WITHOUT /v1, e.g. http://127.0.0.1:1111
+  base_url: "http://127.0.0.1:1111"
+  api_prefix: "/v1"
+
+  # The API uses Authorization: Bearer <key>.
+  # You can place the RCON password/key here OR use password_env below.
+  password: "CHANGE_ME"
+  password_env: "WARDOGS_RCON_KEY"
+
+  timeout_seconds: 8
+  verify_tls: true
+
+  # Adapt only if your /players response uses different field names.
+  player_fields:
+    steam_id: "id"
+    name: "name"
+    faction: "faction"
+
+bot:
+  poll_interval_seconds: 10
+  request_retry_count: 2
+  request_retry_backoff_seconds: 1.0
+  dry_run: false
+
+  # first = only the first matching rule is processed for a player per poll.
+  # all   = every matching rule is processed.
+  match_mode: "first"
+
+  # A player that disappears from GET /players is treated as a new session
+  # when joining again. Warning/action state is then cleared for that Steam ID.
+  clear_state_when_player_leaves: true
+
+allowlist:
+  steam_ids: []
+  names_exact: []
+  name_regex: []
+
+logging:
+  directory: "./logs"
+  level: "INFO"
+
+  # rotation.mode: size or time
+  rotation:
+    mode: "size"
+    max_bytes: 5242880       # 5 MiB
+    backups: 10
+
+    # Used when mode = time:
+    when: "midnight"         # S, M, H, D, midnight, W0..W6
+    interval: 1
+    utc: false
+
+state:
+  sqlite_path: "./data/nameguard.sqlite3"
+
+# Rules are processed top-to-bottom.
+# Every file/config string is UTF-8. Custom symbols are treated literally,
+# so no escaping is needed unless YAML itself requires it.
+rules:
+  - id: "disallowed_scripts"
+    enabled: true
+    type: "unicode_script"
+    description: "Cyrillic and East-Asian scripts"
+    scripts:
+      - "Cyrillic"
+      - "Han"
+      - "Hangul"
+      - "Hiragana"
+      - "Katakana"
+
+    # General tolerance across ALL scripts listed above.
+    # 1 = exactly one matching script character in the complete name is OK.
+    # The second one triggers this rule, even if the two characters belong to
+    # different scripts (e.g. one Han + one Cyrillic). Set 0 to allow none.
+    allowed_script_characters: 1
+
+    # Optional exact per-character ceiling. This can make an individual
+    # character stricter, but it does NOT increase allowed_script_characters.
+    # If allowed_script_characters is removed, the old exception behavior is
+    # retained: listed characters are allowed up to their configured count,
+    # while all other characters from the configured scripts are blocked.
+    allowed_occurrences:
+      "乂": 1
+    warning:
+      enabled: true
+      count: 2
+      interval_seconds: 30
+      text: "Dein Spielername enthält nicht erlaubte Zeichen. Bitte ändere ihn. Warnung {count}/{max_count}."
+    action:
+      type: "kick"           # none | kick | ban
+      reason: "Nicht erlaubte Zeichen im Spielernamen"
+      cooldown_seconds: 120
+
+  - id: "custom_characters"
+    enabled: true
+    type: "characters"
+    description: "Individuell verbotene Einzelzeichen/Symbole"
+    # Each Unicode character in this string is matched literally.
+    characters: "☭★☆卐"
+    warning:
+      enabled: true
+      count: 1
+      interval_seconds: 20
+      text: "Dein Spielername enthält ein nicht erlaubtes Symbol: {match}. Bitte ändere ihn."
+    action:
+      type: "kick"
+      reason: "Nicht erlaubtes Symbol im Spielernamen"
+      cooldown_seconds: 120
+
+  - id: "custom_sequences"
+    enabled: true
+    type: "sequences"
+    description: "Eigene Zeichenketten oder Symbolfolgen"
+    case_sensitive: false
+    sequences:
+      - "[ADMIN]"
+      - "SERVER OWNER"
+    warning:
+      enabled: false
+      count: 0
+      interval_seconds: 0
+      text: ""
+    action:
+      type: "kick"
+      reason: "Nicht erlaubte Zeichenkette im Spielernamen"
+      cooldown_seconds: 120
+
+  - id: "forbidden_terms_leetspeak"
+    enabled: true
+    type: "terms"
+    description: "Begriffe auch bei Leetspeak/Trennzeichen-Verschleierung erkennen"
+    terms:
+      # Replace these examples with your actual blocked terms.
+      - "examplebadword"
+      - "anotherblockedterm"
+    normalize:
+      unicode_nfkc: true
+      casefold: true
+      remove_separators: true
+      leetspeak: true
+      # Used before separator removal.
+      leet_map:
+        "0": "o"
+        "1": "i"
+        "2": "z"
+        "3": "e"
+        "4": "a"
+        "5": "s"
+        "7": "t"
+        "8": "b"
+        "9": "g"
+        "@": "a"
+        "$": "s"
+        "!": "i"
+        "+": "t"
+    warning:
+      enabled: true
+      count: 1
+      interval_seconds: 20
+      text: "Dein Spielername enthält einen gesperrten Begriff. Bitte ändere ihn."
+    action:
+      type: "kick"
+      reason: "Gesperrter Begriff im Spielernamen"
+      cooldown_seconds: 120
+
+  - id: "regex_presets"
+    enabled: true
+    type: "regex"
+    description: "Eigene Regex-Presets für spezielle Namensmuster"
+    flags:
+      ignore_case: true
+    patterns:
+      # Neutral example presets. Add your own patterns.
+      - name: "admin_impersonation"
+        pattern: "(?:^|[^a-z0-9])(?:adm[i1]n|moderator|mod)(?:[^a-z0-9]|$)"
+      - name: "excessive_leet"
+        pattern: "(?=(?:.*[013457@$!]){4,}).{5,}"
+    warning:
+      enabled: true
+      count: 1
+      interval_seconds: 20
+      text: "Dein Spielername entspricht einem gesperrten Namensmuster ({match}). Bitte ändere ihn."
+    action:
+      type: "kick"
+      reason: "Gesperrtes Namensmuster"
+      cooldown_seconds: 120
